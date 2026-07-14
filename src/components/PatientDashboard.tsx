@@ -1,19 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Search, 
-  Filter, 
-  Calendar, 
-  Clock, 
-  CheckCircle, 
-  X, 
-  Activity, 
-  Sparkles, 
-  Stethoscope, 
-  Award, 
-  Star,
-  Plus,
-  ArrowRight,
-  AlertCircle
+import { motion, AnimatePresence } from "motion/react";
+import {
+  Calendar, Clock, Star, Award, Search, Plus, X, Activity,
+  Sparkles, CheckCircle2, AlertCircle, ChevronRight, Heart,
+  Droplets, MapPin, Video, Phone, Filter, TrendingUp, FileText
 } from "lucide-react";
 import axios from "axios";
 import { Doctor, Appointment, Patient } from "../types";
@@ -23,452 +13,478 @@ interface PatientDashboardProps {
   patient: Patient;
   doctors: Doctor[];
   appointments: Appointment[];
-  onBookAppointment: (appointment: Omit<Appointment, "id">) => void;
+  onBookAppointment: (apt: Omit<Appointment, "id">) => void;
   onCancelAppointment: (id: string) => void;
   onRescheduleAppointment: (id: string, date: string, time: string) => void;
+  currentView?: string;
 }
 
-export default function PatientDashboard({
-  darkMode,
-  patient,
-  doctors,
-  appointments,
-  onBookAppointment,
-  onCancelAppointment,
-  onRescheduleAppointment
-}: PatientDashboardProps) {
-  
-  // States for search and booking
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDept, setSelectedDept] = useState("All");
-  const [selectedRating, setSelectedRating] = useState(0);
-  const [selectedExperience, setSelectedExperience] = useState(0);
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-  // Booking process states
-  const [bookingDoctor, setBookingDoctor] = useState<Doctor | null>(null);
-  const [bookingDate, setBookingDate] = useState("");
-  const [bookingTime, setBookingTime] = useState("");
-  const [bookingSymptoms, setBookingSymptoms] = useState("");
-  const [bookingLoading, setBookingLoading] = useState(false);
-  const [bookingSummary, setBookingSummary] = useState<string | null>(null);
+function StatCard({ label, value, sub, icon: Icon, gradient, delay = 0 }: {
+  label: string; value: string | number; sub?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  gradient: string; delay?: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay, ease: [0.4, 0, 0.2, 1] }}
+      className={`stat-card text-white ${gradient}`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-white/70 uppercase tracking-wider">{label}</p>
+          <p className="text-3xl font-bold leading-none">{value}</p>
+          {sub && <p className="text-xs text-white/60 mt-1">{sub}</p>}
+        </div>
+        <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+          <Icon className="w-5 h-5 text-white" />
+        </div>
+      </div>
+      <div className="absolute bottom-0 right-0 w-20 h-20 rounded-full bg-white/5 -mr-4 -mb-4" />
+    </motion.div>
+  );
+}
 
-  // General Health tips state
-  const [healthTips, setHealthTips] = useState<string | null>(null);
-  const [tipsLoading, setTipsLoading] = useState(false);
+function StatusBadge({ status }: { status: "UPCOMING" | "COMPLETED" | "CANCELLED" }) {
+  const map = {
+    UPCOMING:  "badge badge-blue",
+    COMPLETED: "badge badge-green",
+    CANCELLED: "badge badge-red",
+  };
+  return <span className={map[status]}>{status}</span>;
+}
 
-  // Load health tips on component mount based on age
-  useEffect(() => {
-    async function fetchTips() {
-      setTipsLoading(true);
-      try {
-        const response = await axios.post("/api/gemini/health-tips", {
-          department: "General Medicine",
-          patientAge: "24"
-        });
-        setHealthTips(response.data.tips);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setTipsLoading(false);
-      }
-    }
-    fetchTips();
-  }, []);
+// ─── Booking Modal ────────────────────────────────────────────────────────────
 
-  // Filter approved doctors
-  const filteredDoctors = doctors.filter(doc => {
-    if (doc.status !== "APPROVED") return false;
-    
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          doc.bio.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesDept = selectedDept === "All" || doc.department === selectedDept;
-    const matchesRating = doc.rating >= selectedRating;
-    const matchesExp = doc.experience >= selectedExperience;
+function BookingModal({ doctor, darkMode, onClose, onConfirm }: {
+  doctor: Doctor; darkMode: boolean;
+  onClose: () => void;
+  onConfirm: (date: string, time: string, symptoms: string) => void;
+}) {
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [symptoms, setSymptoms] = useState("");
+  const [loading, setLoading] = useState(false);
 
-    return matchesSearch && matchesDept && matchesRating && matchesExp;
-  });
-
-  const handleBookSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bookingDoctor || !bookingDate || !bookingTime) return;
-
-    setBookingLoading(true);
-    let aiSummary = undefined;
-
-    try {
-      // Get AI recommendations/summary pre-booking for that symptom
-      if (bookingSymptoms.trim()) {
-        const response = await axios.post("/api/gemini/symptom-check", {
-          symptoms: bookingSymptoms,
-          patientAge: "24",
-          patientGender: "Male"
-        });
-        aiSummary = response.data.analysis;
-      }
-
-      onBookAppointment({
-        patientId: patient.id,
-        patientName: patient.name,
-        doctorId: bookingDoctor.id,
-        doctorName: bookingDoctor.name,
-        department: bookingDoctor.department,
-        date: bookingDate,
-        time: bookingTime,
-        status: "UPCOMING",
-        symptoms: bookingSymptoms,
-        aiSummary
-      });
-
-      // Show success
-      setBookingSummary(aiSummary || "Appointment booked successfully.");
-      setBookingDoctor(null);
-      setBookingDate("");
-      setBookingTime("");
-      setBookingSymptoms("");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setBookingLoading(false);
-    }
+    setLoading(true);
+    await new Promise(r => setTimeout(r, 400));
+    onConfirm(date, time, symptoms);
+    setLoading(false);
   };
 
-  const myAppointments = appointments.filter(a => a.patientId === patient.id);
+  const base = darkMode
+    ? "bg-slate-900 border-slate-700 text-slate-100"
+    : "bg-white border-slate-200 text-slate-900";
 
   return (
-    <div className="flex-grow p-8 overflow-y-auto max-w-7xl mx-auto font-sans">
-      <div className="space-y-8">
-        
-        {/* Welcome Block */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Hello, {patient.name}!
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">Welcome to your secure patient clinical portal.</p>
-          </div>
-          
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        className={`w-full max-w-md rounded-2xl border shadow-modal p-6 space-y-5 ${base}`}
+      >
+        <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <span className="px-2.5 py-1 text-[10px] font-mono bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-full font-bold">
-              Blood Group: {patient.bloodGroup}
-            </span>
-            <span className="px-2.5 py-1 text-[10px] font-mono bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 rounded-full font-bold">
-              ID: {patient.id}
-            </span>
+            <img src={doctor.photo} alt={doctor.name}
+              className="w-12 h-12 rounded-xl object-cover border border-slate-200/40" />
+            <div>
+              <h3 className="font-bold text-base leading-tight">{doctor.name}</h3>
+              <p className="text-xs text-blue-500 font-medium mt-0.5">{doctor.department}</p>
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Date</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="input-field py-2.5" required />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Time Slot</label>
+              <select value={time} onChange={e => setTime(e.target.value)}
+                className="input-field py-2.5" required>
+                <option value="">Select slot</option>
+                {doctor.slots.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Symptoms <span className="text-slate-300 normal-case font-normal">(optional — for AI pre-screening)</span>
+            </label>
+            <textarea value={symptoms} onChange={e => setSymptoms(e.target.value)}
+              placeholder="Describe what you're experiencing…"
+              rows={3}
+              className="input-field resize-none leading-relaxed" />
+          </div>
+
+          <div className={`flex items-center gap-2.5 p-3 rounded-xl text-xs ${darkMode ? "bg-blue-900/20 border border-blue-800/40 text-blue-300" : "bg-blue-50 border border-blue-100 text-blue-700"}`}>
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+            Gemini AI will pre-screen your symptoms and prepare your doctor before the consultation.
+          </div>
+
+          <div className="flex gap-2.5 pt-1">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2.5">Cancel</button>
+            <motion.button type="submit" disabled={loading} whileTap={{ scale: 0.98 }}
+              className="btn-primary flex-1 py-2.5">
+              {loading ? (
+                <><motion.span animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+                  className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full inline-block" />Booking…</>
+              ) : (<><Calendar className="w-4 h-4" />Confirm Booking</>)}
+            </motion.button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function PatientDashboard({
+  darkMode, patient, doctors, appointments,
+  onBookAppointment, onCancelAppointment, currentView = "patient-dashboard",
+}: PatientDashboardProps) {
+
+  const [searchTerm,  setSearchTerm]  = useState("");
+  const [selectedDept, setSelectedDept] = useState("All");
+  const [bookingDoctor, setBookingDoctor] = useState<Doctor | null>(null);
+  const [healthTips, setHealthTips]   = useState<string | null>(null);
+  const [tipsLoading, setTipsLoading] = useState(false);
+  const [confirmedMsg, setConfirmedMsg] = useState<string | null>(null);
+
+  const myApts = appointments.filter(a => a.patientId === patient?.id);
+  const upcoming  = myApts.filter(a => a.status === "UPCOMING");
+  const completed = myApts.filter(a => a.status === "COMPLETED");
+
+  useEffect(() => {
+    if (currentView !== "patient-dashboard") return;
+    setTipsLoading(true);
+    axios.post("/api/gemini/health-tips", { department: "General Medicine", patientAge: "24" })
+      .then(r => setHealthTips(r.data.tips))
+      .catch(() => setHealthTips("• Stay hydrated — aim for 2–3L of water daily.\n• Walk 30 minutes each morning for cardiovascular health.\n• Schedule your annual preventive health screening."))
+      .finally(() => setTipsLoading(false));
+  }, [currentView]);
+
+  const filteredDoctors = doctors.filter(d => {
+    if (d.status !== "APPROVED") return false;
+    const q = searchTerm.toLowerCase();
+    const matchSearch = d.name.toLowerCase().includes(q) || d.department.toLowerCase().includes(q) || d.bio.toLowerCase().includes(q);
+    const matchDept = selectedDept === "All" || d.department === selectedDept;
+    return matchSearch && matchDept;
+  });
+
+  const DEPTS = ["All", "Cardiology", "Pediatrics", "Neurology", "Orthopedics", "Dermatology"];
+
+  const handleBookingConfirm = async (date: string, time: string, symptoms: string) => {
+    if (!bookingDoctor || !patient) return;
+    let aiSummary: string | undefined;
+    if (symptoms.trim()) {
+      try {
+        const r = await axios.post("/api/gemini/symptom-check", { symptoms, patientAge: "24", patientGender: "Male" });
+        aiSummary = r.data.analysis;
+      } catch { /* silent */ }
+    }
+    onBookAppointment({
+      patientId: patient.id, patientName: patient.name,
+      doctorId: bookingDoctor.id, doctorName: bookingDoctor.name,
+      department: bookingDoctor.department,
+      date, time, status: "UPCOMING", symptoms, aiSummary,
+    });
+    setConfirmedMsg(`Appointment with ${bookingDoctor.name} on ${date} at ${time} confirmed!`);
+    setBookingDoctor(null);
+    setTimeout(() => setConfirmedMsg(null), 5000);
+  };
+
+  const card = darkMode
+    ? "bg-slate-900 border border-slate-800"
+    : "bg-white border border-slate-200";
+
+  if (!patient) return null;
+
+  // ── APPOINTMENTS VIEW ────────────────────────────────────────────────────────
+  if (currentView === "patient-appointments") {
+    return (
+      <div className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className={`text-2xl font-bold tracking-tight ${darkMode ? "text-white" : "text-slate-900"}`}>
+              Book an Appointment
+            </h1>
+            <p className="text-sm text-slate-400 mt-0.5">Find and book your specialist consultation</p>
           </div>
         </div>
 
-        {/* AI Health Tips Block */}
-        <div className={`p-6 rounded-2xl border relative overflow-hidden
-          ${darkMode 
-            ? "bg-[#0F172A]/40 border-slate-800 shadow-xl" 
-            : "bg-gradient-to-r from-sky-50/40 to-blue-50/10 border-slate-200 text-slate-800"}`}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4.5 h-4.5 text-sky-500 animate-pulse" />
-            <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 dark:text-white">Dr. Gemini AI Daily Preventative Health Tips</h3>
+        {/* Search + Filters */}
+        <div className={`p-4 rounded-2xl ${card} space-y-3`}>
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search by doctor name, specialty, or keyword…"
+              className="input-field pl-10" />
           </div>
-          
-          {tipsLoading ? (
-            <div className="space-y-2 animate-pulse">
-              <div className="h-3 bg-slate-300 dark:bg-slate-800 rounded w-3/4"></div>
-              <div className="h-3 bg-slate-300 dark:bg-slate-800 rounded w-1/2"></div>
-            </div>
-          ) : (
-            <div className="text-xs leading-relaxed text-slate-400 whitespace-pre-line">
-              {healthTips || "- Focus on dynamic stretching before aerobics.\n- Keep your clinical records updated."}
-            </div>
-          )}
-        </div>
-
-        {/* Booking Notification modal */}
-        {bookingSummary && (
-          <div className="p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 space-y-3 relative">
-            <button 
-              onClick={() => setBookingSummary(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="flex items-center gap-2 text-emerald-500">
-              <CheckCircle className="w-5 h-5" />
-              <h4 className="text-xs font-mono font-bold uppercase tracking-wider">Appointment Scheduled & Screened</h4>
-            </div>
-            <p className="text-xs text-slate-400 leading-relaxed max-w-4xl">
-              Our clinical resident screened your symptoms. Here is the doctor preparation guidance:<br />
-              <span className="block mt-2 font-mono text-[11px] bg-[#0F172A] p-3 rounded-lg border border-slate-800 text-sky-400 whitespace-pre-line">
-                {bookingSummary}
-              </span>
-            </p>
-          </div>
-        )}
-
-        {/* Active Appointments */}
-        <div className="space-y-3">
-          <h2 className="text-xs font-mono uppercase tracking-widest text-slate-400">Your Scheduled Consultations</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myAppointments.length === 0 ? (
-              <div className={`p-8 col-span-2 rounded-2xl border text-center text-xs text-slate-400 border-dashed
-                ${darkMode ? "bg-slate-950/10 border-slate-800" : "bg-slate-50 border-slate-200"}`}
-              >
-                You have no upcoming or historical consultations scheduled. Choose a specialist below to book!
-              </div>
-            ) : (
-              myAppointments.map((apt) => (
-                <div 
-                  key={apt.id}
-                  className={`p-5 rounded-2xl border flex flex-col justify-between gap-4 transition-all
-                    ${darkMode ? "bg-[#0F172A]/40 border-slate-800 hover:border-slate-700" : "bg-white border-slate-200 hover:border-sky-500/20"}`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <span className={`px-2 py-0.5 text-[9px] font-mono rounded font-semibold
-                        ${apt.status === "UPCOMING" 
-                          ? "bg-sky-500/15 text-sky-500 border border-sky-500/20" 
-                          : apt.status === "COMPLETED" 
-                            ? "bg-emerald-500/15 text-emerald-500 border border-emerald-500/20"
-                            : "bg-rose-500/15 text-rose-500 border border-rose-500/20"}`}
-                      >
-                        {apt.status}
-                      </span>
-                      <h4 className="font-sans font-bold text-sm text-slate-900 dark:text-slate-100 mt-2">{apt.doctorName}</h4>
-                      <p className="text-[10px] font-mono text-sky-500 uppercase tracking-wide">Dept: {apt.department}</p>
-                    </div>
-
-                    <div className="text-right space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-200">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{apt.date}</span>
-                      </div>
-                      <div className="flex items-center justify-end gap-1.5 text-xs text-slate-400 font-mono">
-                        <Clock className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{apt.time}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {apt.symptoms && (
-                    <p className="text-[11px] bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60 text-slate-400 font-sans italic truncate">
-                      Symptoms: "{apt.symptoms}"
-                    </p>
-                  )}
-
-                  {apt.status === "UPCOMING" && (
-                    <div className="flex justify-end gap-2 border-t pt-3 border-inherit">
-                      <button
-                        onClick={() => onCancelAppointment(apt.id)}
-                        className="px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-[10px] font-semibold transition-colors"
-                      >
-                        Cancel Appointment
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Search & Book a Doctor */}
-        <div className="space-y-4">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <h2 className="text-xs font-mono uppercase tracking-widest text-slate-400">Discover Clinic Specialists</h2>
-            
-            {/* Simple Search Input */}
-            <div className="flex items-center gap-2 max-w-md w-full">
-              <div className="relative flex-grow">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search specialist name or bio..."
-                  className={`w-full pl-9 pr-4 py-2 rounded-xl text-xs border focus:outline-none focus:ring-1 focus:ring-sky-500
-                    ${darkMode ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-slate-50 border-slate-200"}`}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Filter Bar */}
-          <div className="flex flex-wrap gap-2.5">
-            {/* Department */}
-            <select
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-              className={`px-3 py-1.5 rounded-lg text-xs border focus:outline-none focus:ring-1 focus:ring-sky-500
-                ${darkMode ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-700"}`}
-            >
-              <option value="All">All Specialties</option>
-              <option value="Cardiology">Cardiology</option>
-              <option value="Pediatrics">Pediatrics</option>
-              <option value="Neurology">Neurology</option>
-              <option value="Orthopedics">Orthopedics</option>
-              <option value="Dermatology">Dermatology</option>
-            </select>
-
-            {/* Experience */}
-            <select
-              value={selectedExperience}
-              onChange={(e) => setSelectedExperience(Number(e.target.value))}
-              className={`px-3 py-1.5 rounded-lg text-xs border focus:outline-none focus:ring-1 focus:ring-sky-500
-                ${darkMode ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-700"}`}
-            >
-              <option value={0}>Any Experience</option>
-              <option value={5}>5+ Years</option>
-              <option value={10}>10+ Years</option>
-              <option value={15}>15+ Years</option>
-            </select>
-          </div>
-
-          {/* Doctors Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredDoctors.map((doc) => (
-              <div 
-                key={doc.id}
-                className={`p-5 rounded-2xl border flex flex-col justify-between gap-5 transition-all
-                  ${darkMode ? "bg-[#0F172A]/40 border-slate-800 hover:border-slate-700" : "bg-white border-slate-200 hover:border-sky-500/30"}`}
-              >
-                <div className="space-y-3">
-                  <div className="flex gap-3 items-center">
-                    <img 
-                      src={doc.photo} 
-                      alt={doc.name} 
-                      referrerPolicy="no-referrer"
-                      className="w-12 h-12 rounded-xl object-cover border border-slate-200/40"
-                    />
-                    <div>
-                      <h4 className="font-sans font-bold text-xs text-slate-900 dark:text-slate-100 leading-none">{doc.name}</h4>
-                      <p className="text-[10px] text-sky-500 font-mono uppercase tracking-wide mt-1 font-semibold">{doc.department} chief</p>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1">
-                        <span className="flex items-center gap-1 text-amber-500">
-                          <Star className="w-3.5 h-3.5 fill-current" />
-                          <b>{doc.rating}</b>
-                        </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1">
-                          <Award className="w-3.5 h-3.5" />
-                          <b>{doc.experience} yrs exp</b>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] leading-relaxed text-slate-400">{doc.bio}</p>
-                </div>
-
-                <div className="border-t pt-3 border-inherit flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">Availability</span>
-                    <span className="block text-[10px] font-bold text-slate-900 dark:text-slate-300">
-                      {doc.availability.join(", ")}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setBookingDoctor(doc);
-                      setBookingDate("");
-                      setBookingTime("");
-                      setBookingSymptoms("");
-                    }}
-                    className="px-3.5 py-1.5 ai-gradient hover:opacity-95 text-white rounded-lg text-[10px] font-bold transition-all shadow-md shadow-sky-500/10 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Book Specialist</span>
-                  </button>
-                </div>
-              </div>
+          <div className="flex gap-2 flex-wrap">
+            {DEPTS.map(d => (
+              <button key={d} onClick={() => setSelectedDept(d)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  selectedDept === d
+                    ? "bg-blue-600 text-white border-blue-600 shadow-brand"
+                    : darkMode
+                      ? "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-600"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                }`}>{d}</button>
             ))}
           </div>
         </div>
 
-        {/* Booking Form Overlay Modal */}
-        {bookingDoctor && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className={`p-6 rounded-2xl border w-full max-w-md space-y-4 shadow-2xl relative
-              ${darkMode ? "bg-[#0F172A] border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-800"}`}
-            >
-              <button 
-                onClick={() => setBookingDoctor(null)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              <div className="space-y-1">
-                <span className="text-[10px] font-mono text-sky-500 font-bold uppercase tracking-widest">Confirm Booking</span>
-                <h3 className="text-base font-extrabold font-display text-slate-900 dark:text-white">
-                  Schedule with {bookingDoctor.name}
-                </h3>
-                <p className="text-[11px] text-slate-400 uppercase font-mono">{bookingDoctor.department} Specialty</p>
+        {/* Doctor Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredDoctors.map((doc, i) => (
+            <motion.div key={doc.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.06 }}
+              className={`rounded-2xl ${card} p-5 flex flex-col gap-4 hover:shadow-card-hover transition-shadow`}>
+              <div className="flex gap-3">
+                <img src={doc.photo} alt={doc.name} referrerPolicy="no-referrer"
+                  className="w-14 h-14 rounded-xl object-cover border border-slate-200/40 shrink-0" />
+                <div className="min-w-0">
+                  <h4 className={`font-bold text-sm leading-tight truncate ${darkMode ? "text-white" : "text-slate-900"}`}>{doc.name}</h4>
+                  <span className="badge badge-blue mt-1">{doc.department}</span>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className="flex items-center gap-1 text-amber-500 text-xs font-semibold">
+                      <Star className="w-3.5 h-3.5 fill-current" />{doc.rating}
+                    </span>
+                    <span className="text-slate-400 text-xs flex items-center gap-1">
+                      <Award className="w-3.5 h-3.5" />{doc.experience}yr exp
+                    </span>
+                  </div>
+                </div>
               </div>
+              <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{doc.bio}</p>
+              <div className="border-t pt-3 border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="text-xs text-slate-400">{doc.availability.slice(0,2).join(", ")}{doc.availability.length > 2 ? "…" : ""}</div>
+                <motion.button whileTap={{ scale: 0.97 }}
+                  onClick={() => setBookingDoctor(doc)}
+                  className="btn-primary py-1.5 px-3.5 text-xs">
+                  <Plus className="w-3.5 h-3.5" />Book
+                </motion.button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
 
-              <form onSubmit={handleBookSubmit} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-mono tracking-wider text-slate-400">Consultation Date</label>
-                  <input
-                    type="date"
-                    value={bookingDate}
-                    onChange={(e) => setBookingDate(e.target.value)}
-                    className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none focus:ring-1 focus:ring-sky-500
-                      ${darkMode ? "bg-[#0F172A] border-slate-800 text-slate-100" : "bg-slate-50 border-slate-200"}`}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-mono tracking-wider text-slate-400">Available Time Slot</label>
-                  <select
-                    value={bookingTime}
-                    onChange={(e) => setBookingTime(e.target.value)}
-                    className={`w-full px-3 py-2 rounded-xl text-xs border focus:outline-none focus:ring-1 focus:ring-sky-500
-                      ${darkMode ? "bg-[#0F172A] border-slate-800 text-slate-100" : "bg-slate-50 border-slate-200"}`}
-                    required
-                  >
-                    <option value="">Select a slot</option>
-                    {bookingDoctor.slots.map((s, idx) => (
-                      <option key={idx} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-mono tracking-wider text-slate-400 pl-1">Tell us your symptoms (for Dr. Gemini Screening)</label>
-                  <textarea
-                    value={bookingSymptoms}
-                    onChange={(e) => setBookingSymptoms(e.target.value)}
-                    placeholder="e.g. Mild shortness of breath when running, onset 2 days..."
-                    rows={3}
-                    className={`w-full px-3 py-2.5 rounded-xl text-xs border focus:outline-none focus:ring-1 focus:ring-sky-500 leading-normal
-                      ${darkMode ? "bg-[#0F172A] border-slate-800 text-slate-100" : "bg-slate-50 border-slate-200"}`}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={bookingLoading}
-                  className="w-full py-2.5 rounded-xl text-xs font-semibold ai-gradient hover:opacity-95 text-white shadow-md shadow-sky-500/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  {bookingLoading ? (
-                    <>
-                      <Activity className="w-4 h-4 animate-spin" />
-                      <span>Consulting Gemini Screening...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Confirm Appointment Slot</span>
-                    </>
-                  )}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
+        <AnimatePresence>
+          {bookingDoctor && (
+            <BookingModal doctor={bookingDoctor} darkMode={darkMode}
+              onClose={() => setBookingDoctor(null)} onConfirm={handleBookingConfirm} />
+          )}
+        </AnimatePresence>
       </div>
+    );
+  }
+
+  // ── DASHBOARD VIEW ───────────────────────────────────────────────────────────
+  return (
+    <div className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-6">
+
+      {/* Success toast */}
+      <AnimatePresence>
+        {confirmedMsg && (
+          <motion.div initial={{ opacity:0, y:-12 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-8 }}
+            className="flex items-center gap-3 p-4 rounded-xl bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800/50">
+            <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">{confirmedMsg}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Greeting */}
+      <motion.div initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }}
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className={`text-2xl font-bold tracking-tight ${darkMode ? "text-white" : "text-slate-900"}`}>
+            Good morning, {patient.name.split(" ")[0]} 👋
+          </h1>
+          <p className="text-sm text-slate-400 mt-0.5">Here's your health overview for today</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="badge badge-green flex items-center gap-1.5">
+            <Droplets className="w-3 h-3" />{patient.bloodGroup}
+          </span>
+          <span className="badge badge-blue">{patient.id}</span>
+          <span className="badge badge-slate flex items-center gap-1.5">
+            <Calendar className="w-3 h-3" />Joined {patient.joinedDate}
+          </span>
+        </div>
+      </motion.div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Appointments" value={myApts.length}    sub="All time"         icon={Calendar}    gradient="gradient-card-blue"   delay={0}    />
+        <StatCard label="Upcoming"           value={upcoming.length}  sub="Scheduled"        icon={Clock}       gradient="gradient-card-teal"   delay={0.08} />
+        <StatCard label="Completed"          value={completed.length} sub="Consultations"    icon={CheckCircle2} gradient="gradient-card-green"  delay={0.12} />
+        <StatCard label="Active Doctors"     value={doctors.filter(d=>d.status==="APPROVED").length} sub="Available now" icon={TrendingUp} gradient="gradient-card-orange" delay={0.16} />
+      </div>
+
+      {/* Main grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+        {/* Appointments Timeline */}
+        <div className="xl:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className={`text-sm font-bold ${darkMode ? "text-white" : "text-slate-900"}`}>Upcoming Consultations</h2>
+            <button onClick={() => {}} className="text-xs text-blue-500 hover:text-blue-600 font-medium flex items-center gap-1">
+              View all <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className={`rounded-2xl ${card} divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden`}>
+            {upcoming.length === 0 ? (
+              <div className="p-8 text-center">
+                <Calendar className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-700 mb-3" />
+                <p className={`text-sm font-medium ${darkMode ? "text-slate-400" : "text-slate-500"}`}>No upcoming appointments</p>
+                <p className="text-xs text-slate-400 mt-1">Book a consultation to get started</p>
+              </div>
+            ) : (
+              upcoming.map((apt, i) => (
+                <motion.div key={apt.id}
+                  initial={{ opacity:0, x:-12 }} animate={{ opacity:1, x:0 }}
+                  transition={{ delay: i*0.07 }}
+                  className="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                  <div className="w-10 h-10 rounded-xl gradient-brand flex items-center justify-center shrink-0">
+                    <Calendar className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold truncate ${darkMode ? "text-white" : "text-slate-900"}`}>{apt.doctorName}</p>
+                    <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{apt.date}</span>
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{apt.time}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <StatusBadge status={apt.status} />
+                    <button onClick={() => onCancelAppointment(apt.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </motion.div>
+              ))
+            )}
+          </div>
+
+          {/* Recent completed */}
+          {completed.length > 0 && (
+            <>
+              <h2 className={`text-sm font-bold ${darkMode ? "text-white" : "text-slate-900"}`}>Recent Consultations</h2>
+              <div className={`rounded-2xl ${card} divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden`}>
+                {completed.slice(0, 3).map((apt, i) => (
+                  <motion.div key={apt.id}
+                    initial={{ opacity:0, x:-12 }} animate={{ opacity:1, x:0 }}
+                    transition={{ delay: i*0.07 }}
+                    className="p-4 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-semibold truncate ${darkMode ? "text-white" : "text-slate-900"}`}>{apt.doctorName}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{apt.department} · {apt.date}</p>
+                    </div>
+                    <StatusBadge status={apt.status} />
+                  </motion.div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Right column */}
+        <div className="space-y-4">
+          {/* Health Profile Card */}
+          <motion.div initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.2 }}
+            className={`rounded-2xl ${card} p-5 space-y-4`}>
+            <h3 className={`text-sm font-bold ${darkMode ? "text-white" : "text-slate-900"}`}>Health Profile</h3>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl gradient-brand flex items-center justify-center text-white font-bold text-lg shrink-0">
+                {patient.name.charAt(0)}
+              </div>
+              <div>
+                <p className={`font-semibold text-sm ${darkMode ? "text-white" : "text-slate-900"}`}>{patient.name}</p>
+                <p className="text-xs text-slate-400">{patient.email}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label:"Blood Group", value: patient.bloodGroup, icon: Droplets },
+                { label:"DOB",         value: patient.dob,        icon: Calendar },
+                { label:"Phone",       value: patient.phone,      icon: Phone },
+                { label:"Member Since",value: patient.joinedDate, icon: Award },
+              ].map(item => (
+                <div key={item.label}
+                  className={`p-2.5 rounded-xl ${darkMode ? "bg-slate-800" : "bg-slate-50"}`}>
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{item.label}</p>
+                  <p className={`text-xs font-semibold mt-0.5 truncate ${darkMode ? "text-slate-200" : "text-slate-700"}`}>{item.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className={`p-3 rounded-xl ${darkMode ? "bg-slate-800" : "bg-slate-50"}`}>
+              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Medical History</p>
+              <p className="text-xs text-slate-500 leading-relaxed">{patient.medicalHistory}</p>
+            </div>
+          </motion.div>
+
+          {/* AI Health Tips */}
+          <motion.div initial={{ opacity:0, y:12 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.28 }}
+            className={`rounded-2xl ${card} p-5 space-y-3`}>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+              </div>
+              <h3 className={`text-sm font-bold ${darkMode ? "text-white" : "text-slate-900"}`}>AI Health Tips</h3>
+              <span className="badge badge-blue ml-auto">Gemini</span>
+            </div>
+            {tipsLoading ? (
+              <div className="space-y-2">
+                {[80, 65, 72].map(w => (
+                  <div key={w} className="skeleton h-3 rounded" style={{ width: `${w}%` }} />
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-line">
+                {healthTips}
+              </p>
+            )}
+          </motion.div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {bookingDoctor && (
+          <BookingModal doctor={bookingDoctor} darkMode={darkMode}
+            onClose={() => setBookingDoctor(null)} onConfirm={handleBookingConfirm} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -47,11 +47,21 @@ function loadDb() {
   
   // Seed initial data if file doesn't exist
   const initialData = {
+    admins: [
+      {
+        id: "adm-1",
+        name: "System Administrator",
+        email: "admin@medicare.com",
+        password: "Admin@123",
+        role: "ADMIN"
+      }
+    ],
     doctors: [
       {
         id: "doc-1",
         name: "Dr. Sarah Jenkins",
-        email: "sarah.j@stjude.org",
+        email: "sarah.j@medicare.com",
+        password: "Doctor@123",
         role: "DOCTOR",
         department: "Cardiology",
         experience: 12,
@@ -65,7 +75,8 @@ function loadDb() {
       {
         id: "doc-2",
         name: "Dr. Michael Chen",
-        email: "michael.c@stjude.org",
+        email: "michael.c@medicare.com",
+        password: "Doctor@123",
         role: "DOCTOR",
         department: "Pediatrics",
         experience: 8,
@@ -79,7 +90,8 @@ function loadDb() {
       {
         id: "doc-3",
         name: "Dr. Elena Rostova",
-        email: "elena.r@stjude.org",
+        email: "elena.r@medicare.com",
+        password: "Doctor@123",
         role: "DOCTOR",
         department: "Neurology",
         experience: 15,
@@ -93,7 +105,8 @@ function loadDb() {
       {
         id: "doc-4",
         name: "Dr. James Wilson",
-        email: "james.w@stjude.org",
+        email: "james.w@medicare.com",
+        password: "Doctor@123",
         role: "DOCTOR",
         department: "Orthopedics",
         experience: 10,
@@ -107,7 +120,8 @@ function loadDb() {
       {
         id: "doc-5",
         name: "Dr. Amara Patel",
-        email: "amara.p@stjude.org",
+        email: "amara.p@medicare.com",
+        password: "Doctor@123",
         role: "DOCTOR",
         department: "Dermatology",
         experience: 6,
@@ -124,6 +138,7 @@ function loadDb() {
         id: "pat-1",
         name: "Dinesh Kumar",
         email: "dineshstar979@gmail.com",
+        password: "Patient@123",
         role: "PATIENT",
         phone: "+91 98765 43210",
         dob: "2003-05-15",
@@ -305,6 +320,146 @@ app.put("/api/settings", (req, res) => {
 });
 
 // ==========================
+// AUTH ENDPOINTS
+// ==========================
+
+// LOGIN — checks patients, doctors, admins
+app.post("/api/auth/login", (req, res) => {
+  const { email, password, role } = req.body;
+
+  if (!email || !password || !role) {
+    return res.status(400).json({ success: false, message: "Email, password and role are required." });
+  }
+
+  const db = loadDb();
+  const em = email.toLowerCase().trim();
+
+  if (role === "ADMIN") {
+    const admin = (db.admins || []).find((a: any) =>
+      a.email.toLowerCase() === em && a.password === password
+    );
+    if (!admin) return res.status(401).json({ success: false, message: "Invalid admin credentials." });
+    return res.json({
+      success: true,
+      user: { id: admin.id, name: admin.name, email: admin.email, role: "ADMIN" }
+    });
+  }
+
+  if (role === "DOCTOR") {
+    const doc = (db.doctors || []).find((d: any) =>
+      d.email.toLowerCase() === em && d.password === password
+    );
+    if (!doc) return res.status(401).json({ success: false, message: "Invalid doctor credentials." });
+    if (doc.status === "PENDING") {
+      return res.status(403).json({ success: false, message: "Your account is pending admin approval. Please wait." });
+    }
+    if (doc.status === "REJECTED") {
+      return res.status(403).json({ success: false, message: "Your application was rejected. Contact the admin." });
+    }
+    return res.json({
+      success: true,
+      user: { id: doc.id, name: doc.name, email: doc.email, role: "DOCTOR", department: doc.department }
+    });
+  }
+
+  if (role === "PATIENT") {
+    const pat = (db.patients || []).find((p: any) =>
+      p.email.toLowerCase() === em && p.password === password
+    );
+    if (!pat) return res.status(401).json({ success: false, message: "Invalid email or password." });
+    return res.json({
+      success: true,
+      user: { id: pat.id, name: pat.name, email: pat.email, role: "PATIENT" }
+    });
+  }
+
+  return res.status(400).json({ success: false, message: "Unknown role." });
+});
+
+// REGISTER PATIENT — self-service
+app.post("/api/auth/register/patient", (req, res) => {
+  const { name, email, password, phone, dob, bloodGroup } = req.body;
+
+  if (!name || !email || !password || !phone || !dob || !bloodGroup) {
+    return res.status(400).json({ success: false, message: "All fields are required." });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ success: false, message: "Password must be at least 6 characters." });
+  }
+
+  const db = loadDb();
+  const em = email.toLowerCase().trim();
+
+  const exists = (db.patients || []).some((p: any) => p.email.toLowerCase() === em);
+  if (exists) return res.status(409).json({ success: false, message: "An account with this email already exists." });
+
+  const newPatient = {
+    id: `pat-${Date.now()}`,
+    name: name.trim(),
+    email: em,
+    password,
+    role: "PATIENT",
+    phone,
+    dob,
+    bloodGroup,
+    photo: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=300",
+    medicalHistory: "No prior history recorded.",
+    joinedDate: new Date().toISOString().split("T")[0]
+  };
+
+  db.patients.push(newPatient);
+  saveDb(db);
+
+  return res.json({
+    success: true,
+    user: { id: newPatient.id, name: newPatient.name, email: newPatient.email, role: "PATIENT" }
+  });
+});
+
+// REGISTER DOCTOR — goes into PENDING, admin must approve
+app.post("/api/auth/register/doctor", (req, res) => {
+  const { name, email, password, department, experience, bio } = req.body;
+
+  if (!name || !email || !password || !department) {
+    return res.status(400).json({ success: false, message: "Name, email, password and department are required." });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ success: false, message: "Password must be at least 6 characters." });
+  }
+
+  const db = loadDb();
+  const em = email.toLowerCase().trim();
+
+  const exists = (db.doctors || []).some((d: any) => d.email.toLowerCase() === em);
+  if (exists) return res.status(409).json({ success: false, message: "A doctor with this email already exists." });
+
+  const newDoctor = {
+    id: `doc-${Date.now()}`,
+    name: name.trim(),
+    email: em,
+    password,
+    role: "DOCTOR",
+    department,
+    experience: Number(experience) || 1,
+    rating: 5.0,
+    bio: bio || "",
+    availability: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    slots: ["09:00 AM", "10:00 AM", "11:00 AM", "02:00 PM", "03:00 PM", "04:00 PM"],
+    photo: "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=300",
+    status: "PENDING"
+  };
+
+  db.doctors.push(newDoctor);
+  saveDb(db);
+
+  return res.json({
+    success: true,
+    message: "Registration submitted. Your account is pending admin approval.",
+    user: { id: newDoctor.id, name: newDoctor.name, email: newDoctor.email, role: "DOCTOR", department: newDoctor.department }
+  });
+});
+
+// ==========================
 // AI / GEMINI ENDPOINTS
 // ==========================
 
@@ -355,7 +510,7 @@ app.post("/api/gemini/symptom-check", async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         systemInstruction: "You are an empathetic, clinical-grade medical AI advisor. Speak clearly, professionally, and emphasize that your feedback is an assistant's tool, not a diagnostic replacement."
@@ -399,7 +554,7 @@ app.post("/api/gemini/chat", async (req, res) => {
 
   try {
     const chat = ai.chats.create({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       config: {
         systemInstruction: `You are Dr. Gemini, the chief AI resident at St. Jude AI Medical Center. 
           You are friendly, professional, compassionate, and highly skilled in clinical communication.
@@ -446,7 +601,7 @@ app.post("/api/gemini/summarize-report", async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
     });
     res.json({ summary: response.text });
@@ -493,7 +648,7 @@ app.post("/api/gemini/health-tips", async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
     });
     res.json({ tips: response.text });

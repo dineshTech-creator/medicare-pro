@@ -1,0 +1,134 @@
+{
+  "admins": [
+    {
+      "id": "adm-1",
+      "name": "System Administrator",
+      "email": "admin@medicare.com",
+      "password": "Admin@123",
+      "role": "ADMIN"
+    }
+  ],
+  "doctors": [
+    {
+      "id": "doc-1",
+      "name": "Dr. Sarah Jenkins",
+      "email": "sarah.j@medicare.com",
+      "password": "Doctor@123",
+      "role": "DOCTOR",
+      "department": "Cardiology",
+      "experience": 12,
+      "rating": 4.9,
+      "availability": [
+        "Monday",
+        "Wednesday",
+        "Friday"
+      ],
+      "slots": [
+        "09:00 AM",
+        "10:00 AM",
+        "11:00 AM",
+        "02:00 PM",
+        "03:00 PM"
+      ],
+      "photo": "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=300",
+      "bio": "Senior cardiologist specialized in interventional cardiology and preventive cardiovascular health.",
+      "status": "APPROVED"
+    },
+    {
+      "id": "doc-2",
+      "name": "Dr. Michael Chen",
+      "email": "michael.c@medicare.com",
+      "password": "Doctor@123",
+      "role": "DOCTOR",
+      "department": "Pediatrics",
+      "experience": 8,
+      "rating": 4.8,
+      "availability": [
+        "Monday",
+        "Tuesday",
+        "Thursday"
+      ],
+      "slots": [
+        "10:00 AM",
+        "11:00 AM",
+        "01:00 PM",
+        "03:00 PM",
+        "04:00 PM"
+      ],
+      "photo": "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=300",
+      "bio": "Compassionate pediatrician focused on early childhood development and allergy management.",
+      "status": "APPROVED"
+    },
+    {
+      "id": "doc-4",
+      "name": "Dr. James Wilson",
+      "email": "james.w@medicare.com",
+      "password": "Doctor@123",
+      "role": "DOCTOR",
+      "department": "Orthopedics",
+      "experience": 10,
+      "rating": 4.7,
+      "availability": [
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "slots": [
+        "09:30 AM",
+        "10:30 AM",
+        "02:30 PM",
+        "03:30 PM"
+      ],
+      "photo": "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=300",
+      "bio": "Specialist in orthopedic surgery, sports medicine, and joint reconstruction.",
+      "status": "APPROVED"
+    },
+    {
+      "id": "doc-5",
+      "name": "Dr. Amara Patel",
+      "email": "amara.p@medicare.com",
+      "password": "Doctor@123",
+      "role": "DOCTOR",
+      "department": "Dermatology",
+      "experience": 6,
+      "rating": 4.6,
+      "availability": [
+        "Monday",
+        "Tuesday",
+        "Wednesday"
+      ],
+      "slots": [
+        "09:00 AM",
+        "10:30 AM",
+        "01:30 PM",
+        "03:00 PM"
+      ],
+      "photo": "https://images.unsplash.com/photo-1527613426441-4da17471b66d?auto=format&fit=crop&q=80&w=300",
+      "bio": "Dermatologist with clinical expertise in pediatric dermatology, acne treatments, and skin cancers.",
+      "status": "APPROVED"
+    }
+  ],
+  "patients": [
+  ],
+  "appointments": [
+    
+  ],
+  "medicalReports": [
+   
+  ],
+  "departments": [
+    "Cardiology",
+    "Pediatrics",
+    "Neurology",
+    "Orthopedics",
+    "Dermatology",
+    "General Medicine"
+  ],
+  "systemSettings": {
+    "hospitalName": "St. Jude AI Medical Center",
+    "allowAutoApproveDoctors": false,
+    "enableSmsNotifications": true,
+    "maxAppointmentsPerSlot": 1,
+    "emergencyContact": "+1 (555) 019-9000"
+  }
+}

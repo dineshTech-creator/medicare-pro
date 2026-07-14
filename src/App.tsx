@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, createContext, useContext } from "react";
 import axios from "axios";
-import { Stethoscope, HeartPulse, ShieldAlert, Sparkles, AlertCircle, RefreshCw } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  HeartPulse, AlertCircle, RefreshCw, CheckCircle2,
+  AlertTriangle, Info, X, Bell, Search, ChevronDown, Moon, Sun
+} from "lucide-react";
 
 import Sidebar from "./components/Sidebar";
 import AuthScreens from "./components/AuthScreens";
@@ -11,30 +15,119 @@ import SymptomChecker from "./components/SymptomChecker";
 import AIChatbot from "./components/AIChatbot";
 import ReportSummarizer from "./components/ReportSummarizer";
 
-import { Doctor, Patient, Appointment, MedicalReport, SystemSettings } from "./types";
+import { Doctor, Patient, Appointment, MedicalReport, SystemSettings, Toast, ToastVariant, UserSession } from "./types";
+
+// ─── Toast Context ────────────────────────────────────────────────────────────
+
+interface ToastContextValue {
+  addToast: (title: string, description?: string, variant?: ToastVariant, duration?: number) => void;
+}
+const ToastContext = createContext<ToastContextValue>({ addToast: () => {} });
+export const useToast = () => useContext(ToastContext);
+
+// ─── Toast Component ──────────────────────────────────────────────────────────
+
+const TOAST_ICONS: Record<ToastVariant, React.ReactNode> = {
+  success: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+  error:   <AlertCircle  className="w-4 h-4 text-red-500" />,
+  warning: <AlertTriangle className="w-4 h-4 text-amber-500" />,
+  info:    <Info         className="w-4 h-4 text-blue-500" />,
+};
+const TOAST_STYLES: Record<ToastVariant, string> = {
+  success: "border-emerald-200 bg-white dark:bg-slate-900 dark:border-emerald-800/50",
+  error:   "border-red-200   bg-white dark:bg-slate-900 dark:border-red-800/50",
+  warning: "border-amber-200 bg-white dark:bg-slate-900 dark:border-amber-800/50",
+  info:    "border-blue-200  bg-white dark:bg-slate-900 dark:border-blue-800/50",
+};
+
+function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: string) => void }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2 pointer-events-none">
+      <AnimatePresence mode="popLayout">
+        {toasts.map((t) => (
+          <motion.div
+            key={t.id}
+            layout
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0,  scale: 1    }}
+            exit={{    opacity: 0, y: 8,  scale: 0.96, transition: { duration: 0.15 } }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl border shadow-elevated min-w-[300px] max-w-sm ${TOAST_STYLES[t.variant]}`}
+          >
+            <div className="mt-0.5 shrink-0">{TOAST_ICONS[t.variant]}</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.title}</p>
+              {t.description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{t.description}</p>}
+            </div>
+            <button onClick={() => onRemove(t.id)} className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors mt-0.5">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Page Transition Wrapper ──────────────────────────────────────────────────
+
+function PageWrapper({ children, viewKey }: { children: React.ReactNode; viewKey: string }) {
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={viewKey}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{    opacity: 0, y: -4 }}
+        transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+        className="flex-1 flex flex-col min-h-0 overflow-hidden"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  // Theme State
-  const [darkMode, setDarkMode] = useState<boolean>(true);
-  
-  // Database States loaded from Express backend
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [reports, setReports] = useState<MedicalReport[]>([]);
-  const [settings, setSettings] = useState<SystemSettings | null>(null);
-  
-  const [dbLoading, setDbLoading] = useState<boolean>(true);
-  const [dbError, setDbError] = useState<string | null>(null);
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem("darkMode");
+    return saved ? saved === "true" : true;
+  });
 
-  // Active Session State
-  const [currentUser, setCurrentUser] = useState<{ name: string; role: "PATIENT" | "DOCTOR" | "ADMIN"; id: string; department?: string } | null>(null);
-  const [currentView, setCurrentView] = useState<string>("patient-dashboard");
-
-  // Fetch full-stack simulated database state on mount
+  // Sync dark mode to <html> class and localStorage
   useEffect(() => {
-    fetchDb();
+    const root = document.documentElement;
+    if (darkMode) root.classList.add("dark");
+    else root.classList.remove("dark");
+    localStorage.setItem("darkMode", String(darkMode));
+  }, [darkMode]);
+
+  // Database state
+  const [doctors,      setDoctors]      = useState<Doctor[]>([]);
+  const [patients,     setPatients]     = useState<Patient[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [reports,      setReports]      = useState<MedicalReport[]>([]);
+  const [settings,     setSettings]     = useState<SystemSettings | null>(null);
+  const [dbLoading,    setDbLoading]    = useState(true);
+  const [dbError,      setDbError]      = useState<string | null>(null);
+
+  // Session
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
+  const [currentView, setCurrentView] = useState("patient-dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Toast
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const addToast = useCallback((title: string, description?: string, variant: ToastVariant = "info", duration = 4000) => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts(prev => [...prev, { id, title, description, variant, duration }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
   }, []);
+  const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+
+  useEffect(() => { fetchDb(); }, []);
 
   const fetchDb = async () => {
     setDbLoading(true);
@@ -46,54 +139,51 @@ export default function App() {
       setAppointments(res.data.appointments);
       setReports(res.data.medicalReports);
       setSettings(res.data.systemSettings);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setDbError("Express Full-Stack connection lost. Reloading...");
+      setDbError("Unable to reach server. Check your connection.");
+      addToast("Connection Error", "Could not sync database.", "error");
     } finally {
       setDbLoading(false);
     }
   };
 
-  // State mutations synced back to backend Express APIs in real-time
+  // ─── API Handlers ───────────────────────────────────────────────────────────
+
   const handleBookAppointment = async (newApt: Omit<Appointment, "id">) => {
     try {
       const res = await axios.post("/api/appointments", newApt);
       if (res.data.success) {
         setAppointments(prev => [...prev, res.data.appointment]);
+        addToast("Appointment Booked", `Scheduled with ${newApt.doctorName} on ${newApt.date}`, "success");
       }
-    } catch (err) {
-      console.error("Failed to sync booking to backend:", err);
-    }
+    } catch { addToast("Booking Failed", "Please try again.", "error"); }
   };
 
   const handleCancelAppointment = async (id: string) => {
     try {
       const apt = appointments.find(a => a.id === id);
       if (apt) {
-        const updated = { ...apt, status: "CANCELLED" as const };
-        const res = await axios.put(`/api/appointments/${id}`, updated);
+        const res = await axios.put(`/api/appointments/${id}`, { ...apt, status: "CANCELLED" });
         if (res.data.success) {
           setAppointments(prev => prev.map(a => a.id === id ? res.data.appointment : a));
+          addToast("Appointment Cancelled", "Your appointment has been cancelled.", "warning");
         }
       }
-    } catch (err) {
-      console.error("Failed to cancel booking:", err);
-    }
+    } catch { addToast("Error", "Could not cancel appointment.", "error"); }
   };
 
   const handleRescheduleAppointment = async (id: string, date: string, time: string) => {
     try {
       const apt = appointments.find(a => a.id === id);
       if (apt) {
-        const updated = { ...apt, date, time };
-        const res = await axios.put(`/api/appointments/${id}`, updated);
+        const res = await axios.put(`/api/appointments/${id}`, { ...apt, date, time });
         if (res.data.success) {
           setAppointments(prev => prev.map(a => a.id === id ? res.data.appointment : a));
+          addToast("Appointment Rescheduled", `New date: ${date} at ${time}`, "success");
         }
       }
-    } catch (err) {
-      console.error("Failed to reschedule:", err);
-    }
+    } catch { addToast("Error", "Could not reschedule.", "error"); }
   };
 
   const handleAddReport = async (newRep: MedicalReport) => {
@@ -101,10 +191,9 @@ export default function App() {
       const res = await axios.post("/api/reports", newRep);
       if (res.data.success) {
         setReports(prev => [...prev, res.data.report]);
+        addToast("Report Uploaded", "AI summary generated successfully.", "success");
       }
-    } catch (err) {
-      console.error("Failed to save report:", err);
-    }
+    } catch { addToast("Upload Failed", "Could not save report.", "error"); }
   };
 
   const handleApproveDoctor = async (id: string) => {
@@ -112,10 +201,9 @@ export default function App() {
       const res = await axios.put(`/api/doctors/${id}`, { status: "APPROVED" });
       if (res.data.success) {
         setDoctors(prev => prev.map(d => d.id === id ? res.data.doctor : d));
+        addToast("Doctor Approved", "Specialist is now active in the system.", "success");
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch { addToast("Error", "Could not approve doctor.", "error"); }
   };
 
   const handleRejectDoctor = async (id: string) => {
@@ -123,10 +211,9 @@ export default function App() {
       const res = await axios.put(`/api/doctors/${id}`, { status: "REJECTED" });
       if (res.data.success) {
         setDoctors(prev => prev.map(d => d.id === id ? res.data.doctor : d));
+        addToast("Application Rejected", "Doctor application has been declined.", "warning");
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch { addToast("Error", "Could not reject application.", "error"); }
   };
 
   const handleAddDoctor = async (newDoc: Omit<Doctor, "id">) => {
@@ -134,10 +221,9 @@ export default function App() {
       const res = await axios.post("/api/doctors", newDoc);
       if (res.data.success) {
         setDoctors(prev => [...prev, res.data.doctor]);
+        addToast("Doctor Added", `${newDoc.name} has been registered.`, "success");
       }
-    } catch (err) {
-      console.error("Failed to add doctor:", err);
-    }
+    } catch { addToast("Error", "Could not add doctor.", "error"); }
   };
 
   const handleRemoveDoctor = async (id: string) => {
@@ -145,10 +231,9 @@ export default function App() {
       const res = await axios.delete(`/api/doctors/${id}`);
       if (res.data.success) {
         setDoctors(prev => prev.filter(d => d.id !== id));
+        addToast("Doctor Removed", "Specialist removed from registry.", "info");
       }
-    } catch (err) {
-      console.error("Failed to delete doctor:", err);
-    }
+    } catch { addToast("Error", "Could not remove doctor.", "error"); }
   };
 
   const handleUpdateSettings = async (updatedSettings: Partial<SystemSettings>) => {
@@ -156,284 +241,263 @@ export default function App() {
       const res = await axios.put("/api/settings", updatedSettings);
       if (res.data.success) {
         setSettings(res.data.settings);
+        addToast("Settings Saved", "Configuration updated successfully.", "success");
       }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAcceptAppointment = async (id: string) => {
-    // Already set upcoming, mark status or log
-    console.log("Accepting clinic appointment id:", id);
-  };
-
-  const handleRejectAppointment = async (id: string) => {
-    await handleCancelAppointment(id);
+    } catch { addToast("Error", "Could not save settings.", "error"); }
   };
 
   const handleCompleteAppointment = async (id: string) => {
     try {
       const apt = appointments.find(a => a.id === id);
       if (apt) {
-        const updated = { ...apt, status: "COMPLETED" as const };
-        const res = await axios.put(`/api/appointments/${id}`, updated);
+        const res = await axios.put(`/api/appointments/${id}`, { ...apt, status: "COMPLETED" });
         if (res.data.success) {
           setAppointments(prev => prev.map(a => a.id === id ? res.data.appointment : a));
+          addToast("Consultation Complete", "Appointment marked as completed.", "success");
         }
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch { addToast("Error", "Could not complete appointment.", "error"); }
   };
 
-  const handleRegisterPatient = async (regData: { name: string; email: string; phone: string; dob: string; bloodGroup: string }) => {
-    const newPat: Patient = {
-      id: `pat-${Date.now()}`,
-      name: regData.name,
-      email: regData.email,
-      role: "PATIENT",
-      phone: regData.phone,
-      dob: regData.dob,
-      bloodGroup: regData.bloodGroup,
-      photo: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=300",
-      medicalHistory: "New clinical enrollment history.",
-      joinedDate: new Date().toISOString().split('T')[0]
-    };
-    try {
-      const res = await axios.post("/api/patients", newPat);
-      if (res.data.success) {
-        setPatients(prev => [...prev, res.data.patient]);
-        setCurrentUser({ name: res.data.patient.name, role: "PATIENT", id: res.data.patient.id });
-        setCurrentView("patient-dashboard");
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  const handleRegisterPatient = (_data: any) => {
+    // Registration is now handled inside AuthScreens via /api/auth/register/patient
   };
 
-  const handleLoginSuccess = (userSession: { name: string; role: "PATIENT" | "DOCTOR" | "ADMIN"; id: string; department?: string }) => {
-    setCurrentUser(userSession);
-    if (userSession.role === "PATIENT") {
-      setCurrentView("patient-dashboard");
-    } else if (userSession.role === "DOCTOR") {
-      setCurrentView("doctor-dashboard");
-    } else if (userSession.role === "ADMIN") {
-      setCurrentView("admin-dashboard");
-    }
+  const handleLoginSuccess = (session: UserSession) => {
+    setCurrentUser(session);
+    if      (session.role === "PATIENT") setCurrentView("patient-dashboard");
+    else if (session.role === "DOCTOR")  setCurrentView("doctor-dashboard");
+    else                                  setCurrentView("admin-dashboard");
+    fetchDb(); // refresh DB so newly registered users see their data
+    addToast(`Welcome back, ${session.name.split(" ")[0]}!`, `Logged in as ${session.role.toLowerCase()}`, "success");
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setCurrentView("patient-dashboard");
+    addToast("Signed Out", "You have been logged out securely.", "info");
   };
 
-  // Helper: Let AI suggest clinical routing directly in dashboard
-  const handleBookDepartment = (deptName: string) => {
-    if (currentUser?.role === "PATIENT") {
-      setCurrentView("patient-dashboard");
-    }
+  const handleBookDepartment = (_deptName: string) => {
+    if (currentUser?.role === "PATIENT") setCurrentView("patient-appointments");
   };
 
-  // Render Portals based on view selection
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
   const renderMainContent = () => {
     if (!currentUser) {
       return (
-        <AuthScreens 
-          darkMode={darkMode} 
+        <AuthScreens
+          darkMode={darkMode}
           onLoginSuccess={handleLoginSuccess}
           onRegisterPatient={handleRegisterPatient}
         />
       );
     }
 
-    const currentPatient = patients.find(p => p.id === currentUser.id) || patients[0];
-    const currentDoctor = doctors.find(d => d.id === currentUser.id) || doctors[0];
+    const currentPatient = patients.find(p => p.id === currentUser.id) ?? patients[0];
+    const currentDoctor  = doctors.find(d  => d.id === currentUser.id) ?? doctors[0];
 
-    switch (currentView) {
-      case "patient-dashboard":
-        return (
-          <PatientDashboard
-            darkMode={darkMode}
-            patient={currentPatient}
-            doctors={doctors}
-            appointments={appointments}
-            onBookAppointment={handleBookAppointment}
-            onCancelAppointment={handleCancelAppointment}
-            onRescheduleAppointment={handleRescheduleAppointment}
-            currentView={currentView}
-          />
-        );
-      
-      case "patient-appointments":
-        return (
-          <PatientDashboard
-            darkMode={darkMode}
-            patient={currentPatient}
-            doctors={doctors}
-            appointments={appointments}
-            onBookAppointment={handleBookAppointment}
-            onCancelAppointment={handleCancelAppointment}
-            onRescheduleAppointment={handleRescheduleAppointment}
-            currentView={currentView}
-          />
-        );
+    const content = (() => {
+      switch (currentView) {
+        case "patient-dashboard":
+        case "patient-appointments":
+          return (
+            <PatientDashboard
+              darkMode={darkMode}
+              patient={currentPatient}
+              doctors={doctors}
+              appointments={appointments}
+              onBookAppointment={handleBookAppointment}
+              onCancelAppointment={handleCancelAppointment}
+              onRescheduleAppointment={handleRescheduleAppointment}
+              currentView={currentView}
+            />
+          );
+        case "symptom-checker":
+          return <SymptomChecker darkMode={darkMode} onBookDepartment={handleBookDepartment} />;
+        case "ai-chatbot":
+          return <AIChatbot darkMode={darkMode} patientAge="24" />;
+        case "patient-reports":
+          return (
+            <ReportSummarizer
+              darkMode={darkMode}
+              patientId={currentPatient?.id ?? ""}
+              reports={reports.filter(r => r.patientId === currentPatient?.id)}
+              onAddReport={handleAddReport}
+            />
+          );
+        case "doctor-dashboard":
+        case "doctor-appointments":
+        case "doctor-slots":
+          return (
+            <DoctorDashboard
+              darkMode={darkMode}
+              doctor={currentDoctor}
+              appointments={appointments}
+              onAcceptAppointment={(id) => console.log("accept", id)}
+              onRejectAppointment={handleCancelAppointment}
+              onCompleteAppointment={handleCompleteAppointment}
+              currentView={currentView}
+            />
+          );
+        case "admin-dashboard":
+        case "admin-doctors":
+        case "admin-patients":
+        case "admin-settings":
+          return (
+            <AdminDashboard
+              darkMode={darkMode}
+              doctors={doctors}
+              patients={patients}
+              appointments={appointments}
+              settings={settings ?? {
+                hospitalName: "MediCare Pro",
+                allowAutoApproveDoctors: false,
+                enableSmsNotifications: true,
+                maxAppointmentsPerSlot: 1,
+                emergencyContact: "+1 (555) 019-9000",
+              }}
+              onApproveDoctor={handleApproveDoctor}
+              onRejectDoctor={handleRejectDoctor}
+              onAddDoctor={handleAddDoctor}
+              onRemoveDoctor={handleRemoveDoctor}
+              onUpdateSettings={handleUpdateSettings}
+              currentView={currentView}
+            />
+          );
+        default:
+          return null;
+      }
+    })();
 
-      case "symptom-checker":
-        return (
-          <SymptomChecker 
-            darkMode={darkMode} 
-            onBookDepartment={handleBookDepartment}
-          />
-        );
-
-      case "ai-chatbot":
-        return (
-          <AIChatbot 
-            darkMode={darkMode} 
-            patientAge="24"
-          />
-        );
-
-      case "patient-reports":
-        return (
-          <ReportSummarizer
-            darkMode={darkMode}
-            patientId={currentPatient.id}
-            reports={reports.filter(r => r.patientId === currentPatient.id)}
-            onAddReport={handleAddReport}
-          />
-        );
-
-      case "doctor-dashboard":
-      case "doctor-appointments":
-      case "doctor-slots":
-        return (
-          <DoctorDashboard
-            darkMode={darkMode}
-            doctor={currentDoctor}
-            appointments={appointments}
-            onAcceptAppointment={handleAcceptAppointment}
-            onRejectAppointment={handleRejectAppointment}
-            onCompleteAppointment={handleCompleteAppointment}
-            currentView={currentView}
-          />
-        );
-
-      case "admin-dashboard":
-      case "admin-doctors":
-      case "admin-patients":
-      case "admin-settings":
-        return (
-          <AdminDashboard
-            darkMode={darkMode}
-            doctors={doctors}
-            patients={patients}
-            appointments={appointments}
-            settings={settings || {
-              hospitalName: "St. Jude AI Medical Center",
-              allowAutoApproveDoctors: false,
-              enableSmsNotifications: true,
-              maxAppointmentsPerSlot: 1,
-              emergencyContact: "+1 (555) 019-9000"
-            }}
-            onApproveDoctor={handleApproveDoctor}
-            onRejectDoctor={handleRejectDoctor}
-            onAddDoctor={handleAddDoctor}
-            onRemoveDoctor={handleRemoveDoctor}
-            onUpdateSettings={handleUpdateSettings}
-            currentView={currentView}
-          />
-        );
-
-      default:
-        return null;
-    }
+    return <PageWrapper viewKey={currentView}>{content}</PageWrapper>;
   };
 
-  const handlePresetSelect = (role: "PATIENT" | "DOCTOR" | "ADMIN") => {
-    if (role === "ADMIN") {
-      handleLoginSuccess({ name: "System Administrator", role: "ADMIN", id: "adm-1" });
-    } else if (role === "DOCTOR") {
-      handleLoginSuccess({ name: "Dr. Sarah Jenkins", role: "DOCTOR", id: "doc-1", department: "Cardiology" });
-    } else {
-      handleLoginSuccess({ name: "Dinesh Kumar", role: "PATIENT", id: "pat-1" });
-    }
-  };
+  // ─── Loading Screen ──────────────────────────────────────────────────────────
 
   if (dbLoading) {
     return (
-      <div className={`w-screen h-screen flex flex-col items-center justify-center font-sans transition-colors duration-300
-        ${darkMode ? "bg-[#0F172A] text-slate-100" : "bg-[#F8FAFC] text-slate-900"}`}
-      >
-        <div className="space-y-4 text-center">
-          <HeartPulse className="w-12 h-12 text-sky-500 animate-spin mx-auto" />
-          <div>
-            <h2 className="text-sm font-display uppercase tracking-widest text-sky-500 font-extrabold">MediSmart AI</h2>
-            <p className="text-xs text-slate-400 mt-1">Booting full-stack clinical workspace containers...</p>
+      <div className={`w-screen h-screen flex flex-col items-center justify-center gap-6 transition-colors duration-300 ${darkMode ? "bg-[#0F172A]" : "bg-[#F8FAFC]"}`}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: "backOut" }}
+          className="flex flex-col items-center gap-5"
+        >
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl gradient-brand flex items-center justify-center shadow-brand">
+              <HeartPulse className="w-8 h-8 text-white" />
+            </div>
+            <motion.div
+              className="absolute -inset-1 rounded-2xl border-2 border-blue-400/30"
+              animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0, 0.6] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
           </div>
-        </div>
+          <div className="text-center space-y-1">
+            <h1 className={`text-xl font-bold tracking-tight ${darkMode ? "text-white" : "text-slate-900"}`}>MediCare Pro</h1>
+            <p className={`text-sm ${darkMode ? "text-slate-400" : "text-slate-500"}`}>Initializing clinical workspace…</p>
+          </div>
+          <div className={`w-48 h-1 rounded-full overflow-hidden ${darkMode ? "bg-slate-800" : "bg-slate-200"}`}>
+            <motion.div
+              className="h-full gradient-brand rounded-full"
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 1.8, ease: "easeInOut" }}
+            />
+          </div>
+        </motion.div>
       </div>
     );
   }
 
+  // ─── Main Layout ─────────────────────────────────────────────────────────────
+
   return (
-    <div className={`w-screen h-screen flex overflow-hidden font-sans select-none transition-colors duration-300
-      ${darkMode ? "bg-[#0F172A] text-slate-100" : "bg-[#F8FAFC] text-slate-900"}`}
-    >
-      {/* Shared Sidebar */}
-      {currentUser && (
-        <Sidebar
-          currentView={currentView}
-          setCurrentView={setCurrentView}
-          currentUser={currentUser}
-          onLogout={handleLogout}
-          darkMode={darkMode}
-          setDarkMode={setDarkMode}
-        />
-      )}
+    <ToastContext.Provider value={{ addToast }}>
+      <div className={`w-screen h-screen flex overflow-hidden transition-colors duration-200 ${darkMode ? "dark bg-[#0F172A] text-slate-100" : "bg-[#F8FAFC] text-slate-900"}`}>
 
-      {/* Main Screen */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* Simple top info status bar */}
+        {/* Sidebar */}
         {currentUser && (
-          <header className={`h-16 shrink-0 border-b flex items-center justify-between px-8 transition-colors
-            ${darkMode ? "bg-[#0F172A]/85 border-slate-800" : "bg-white border-slate-200"}`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="px-2 py-0.5 text-[9px] font-mono rounded uppercase font-bold text-white ai-gradient shrink-0">
-                Live Sync
-              </span>
-              <p className="text-xs text-slate-400">
-                Active Session: {currentUser.role} Control Room
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4">
-              {dbError && (
-                <span className="text-[10px] text-rose-500 font-mono flex items-center gap-1.5 animate-pulse">
-                  <AlertCircle className="w-4 h-4" />
-                  {dbError}
-                </span>
-              )}
-              <button 
-                onClick={fetchDb}
-                className="p-1.5 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
-                title="Synchronize Database"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-slate-400 hover:text-slate-200" />
-              </button>
-              <span className="text-[10px] text-slate-400 font-mono">
-                STJUDE_V1.0.0
-              </span>
-            </div>
-          </header>
+          <Sidebar
+            currentView={currentView}
+            setCurrentView={setCurrentView}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+            darkMode={darkMode}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(p => !p)}
+          />
         )}
 
-        {/* Content Container */}
-        <div className="flex-grow overflow-hidden flex flex-col">
-          {renderMainContent()}
+        {/* Main Area */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+          {/* Top Header */}
+          {currentUser && (
+            <header className={`h-14 shrink-0 flex items-center justify-between px-6 border-b transition-colors ${darkMode ? "bg-[#0F172A] border-slate-800" : "bg-white border-slate-200"}`}>
+
+              {/* Left: breadcrumb / status */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="pulse-dot" />
+                  <span className={`text-xs font-medium ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
+                    Live Sync Active
+                  </span>
+                </div>
+                {dbError && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-500">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>{dbError}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Right: actions */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchDb}
+                  title="Sync database"
+                  className={`p-2 rounded-lg transition-colors ${darkMode ? "hover:bg-slate-800 text-slate-400 hover:text-slate-200" : "hover:bg-slate-100 text-slate-400 hover:text-slate-700"}`}
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => setDarkMode(p => !p)}
+                  className={`p-2 rounded-lg transition-colors ${darkMode ? "hover:bg-slate-800 text-slate-400 hover:text-slate-200" : "hover:bg-slate-100 text-slate-500 hover:text-slate-700"}`}
+                >
+                  {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
+
+                <button className={`relative p-2 rounded-lg transition-colors ${darkMode ? "hover:bg-slate-800 text-slate-400 hover:text-slate-200" : "hover:bg-slate-100 text-slate-500 hover:text-slate-700"}`}>
+                  <Bell className="w-4 h-4" />
+                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                </button>
+
+                <div className={`flex items-center gap-2 pl-3 ml-1 border-l ${darkMode ? "border-slate-800" : "border-slate-200"}`}>
+                  <div className="w-7 h-7 rounded-full gradient-brand flex items-center justify-center text-white text-xs font-bold shrink-0">
+                    {currentUser.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="hidden sm:block">
+                    <p className={`text-xs font-semibold leading-none ${darkMode ? "text-slate-200" : "text-slate-800"}`}>{currentUser.name.split(" ")[0]}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 capitalize">{currentUser.role.toLowerCase()}</p>
+                  </div>
+                </div>
+              </div>
+            </header>
+          )}
+
+          {/* Content */}
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+            {renderMainContent()}
+          </div>
         </div>
+
+        {/* Toast Notifications */}
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
       </div>
-    </div>
+    </ToastContext.Provider>
   );
 }
