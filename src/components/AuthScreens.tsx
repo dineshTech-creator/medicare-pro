@@ -342,16 +342,43 @@ function DoctorRegister({ onDone }: { onDone: () => void }) {
   const [dept,  setDept]  = useState("Cardiology");
   const [exp,   setExp]   = useState("1");
   const [bio,   setBio]   = useState("");
+  const [photo, setPhoto] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
   const [success, setSuccess] = useState("");
+
+  const handlePhotoUpload = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload a valid image file.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (ev.target?.result) {
+        setPhoto(ev.target.result as string);
+        setError("");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const onDragLeave = () => setIsDragging(false);
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handlePhotoUpload(e.dataTransfer.files[0]);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(""); setLoading(true);
     try {
       await axios.post("/api/auth/register/doctor",
-        { name, email, password: pass, department: dept, experience: exp, bio });
+        { name, email, password: pass, department: dept, experience: exp, bio, photo });
       setSuccess("Application submitted! An admin will review and approve your account. You can then sign in.");
       onDone();
     } catch (err: any) {
@@ -391,6 +418,40 @@ function DoctorRegister({ onDone }: { onDone: () => void }) {
       <div className="relative">
         <textarea value={bio} onChange={e => setBio(e.target.value)} rows={2} placeholder="Brief professional bio…"
           className="w-full px-3.5 py-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl outline-none resize-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 leading-relaxed" />
+      </div>
+      <div 
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={`w-full p-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer
+          ${isDragging ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"}
+          ${photo ? "py-2" : "py-6"}`}
+      >
+        <input 
+          type="file" 
+          accept="image/*" 
+          onChange={(e) => { if (e.target.files && e.target.files[0]) handlePhotoUpload(e.target.files[0]); }}
+          className="hidden" 
+          id="photo-upload"
+        />
+        <label htmlFor="photo-upload" className="flex flex-col items-center cursor-pointer w-full h-full">
+          {photo ? (
+            <div className="relative group">
+              <img src={photo} alt="Preview" className="w-16 h-16 rounded-full object-cover shadow-sm border border-slate-200" />
+              <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-[10px] text-white font-bold uppercase">Change</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center mb-2">
+                <User className="w-5 h-5 text-blue-500" />
+              </div>
+              <span className="text-xs font-semibold text-slate-700">Drag & drop profile photo</span>
+              <span className="text-[10px] text-slate-400 mt-0.5">or click to browse</span>
+            </>
+          )}
+        </label>
       </div>
       <SubmitBtn loading={loading} label="Submit Application" icon={UserPlus} />
     </form>

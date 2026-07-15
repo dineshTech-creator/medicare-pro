@@ -418,7 +418,7 @@ app.post("/api/auth/register/patient", (req, res) => {
 
 // REGISTER DOCTOR — goes into PENDING, admin must approve
 app.post("/api/auth/register/doctor", (req, res) => {
-  const { name, email, password, department, experience, bio } = req.body;
+  const { name, email, password, department, experience, bio, photo } = req.body;
 
   if (!name || !email || !password || !department) {
     return res.status(400).json({ success: false, message: "Name, email, password and department are required." });
@@ -445,7 +445,7 @@ app.post("/api/auth/register/doctor", (req, res) => {
     bio: bio || "",
     availability: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
     slots: ["09:00 AM", "10:00 AM", "11:00 AM", "02:00 PM", "03:00 PM", "04:00 PM"],
-    photo: "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=300",
+    photo: photo || "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=300",
     status: "PENDING"
   };
 

@@ -114,9 +114,27 @@ export default function App() {
   const [dbError,      setDbError]      = useState<string | null>(null);
 
   // Session
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
-  const [currentView, setCurrentView] = useState("patient-dashboard");
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
+    const saved = localStorage.getItem("currentUser");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [currentView, setCurrentView] = useState(() => {
+    const saved = localStorage.getItem("currentView");
+    return saved ? saved : "patient-dashboard";
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem("currentUser", JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem("currentUser");
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem("currentView", currentView);
+  }, [currentView]);
 
   // Toast
   const [toasts, setToasts] = useState<Toast[]>([]);

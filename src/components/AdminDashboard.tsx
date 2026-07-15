@@ -60,6 +60,7 @@ function AddDoctorModal({ darkMode, onClose, onAdd }: {
 }) {
   const [name, setName]   = useState("");
   const [email, setEmail] = useState("");
+  const [pass, setPass]   = useState("");
   const [dept, setDept]   = useState("Cardiology");
   const [exp, setExp]     = useState(5);
   const [bio, setBio]     = useState("");
@@ -68,14 +69,14 @@ function AddDoctorModal({ darkMode, onClose, onAdd }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) return;
+    if (!name.trim() || !email.trim() || !pass.trim()) return;
     onAdd({
-      name, email, role: "DOCTOR", department: dept,
+      name, email, password: pass, role: "DOCTOR", department: dept,
       experience: Number(exp), rating: 5.0, bio, status: "APPROVED",
       availability: ["Monday","Tuesday","Wednesday","Thursday","Friday"],
       slots: ["09:00 AM","10:00 AM","11:00 AM","02:00 PM","03:00 PM","04:00 PM"],
       photo: "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=300",
-    });
+    } as Omit<Doctor, "id">);
     onClose();
   };
 
@@ -108,6 +109,10 @@ function AddDoctorModal({ darkMode, onClose, onAdd }: {
             <div className="space-y-1.5 col-span-2">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Email</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="jane@hospital.org" className={inp} required />
+            </div>
+            <div className="space-y-1.5 col-span-2">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Password</label>
+              <input type="text" value={pass} onChange={e => setPass(e.target.value)} placeholder="Assign a password" className={inp} required />
             </div>
             <div className="space-y-1.5">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Department</label>
