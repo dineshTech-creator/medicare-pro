@@ -39,7 +39,17 @@ const DATA_FILE = path.join(process.cwd(), "hospital_data.json");
 function loadDb() {
   if (fs.existsSync(DATA_FILE)) {
     try {
-      return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+      const db = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+      
+      // Force update the demo patient credentials in case they are stuck in a persistent disk
+      const demoPat = db.patients?.find((p: any) => p.id === "pat-1");
+      if (demoPat && (demoPat.email !== "patient123@gmail.com" || demoPat.password !== "patient123")) {
+        demoPat.email = "patient123@gmail.com";
+        demoPat.password = "patient123";
+        fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+      }
+
+      return db;
     } catch (e) {
       console.error("Error reading JSON data file, resetting database:", e);
     }
