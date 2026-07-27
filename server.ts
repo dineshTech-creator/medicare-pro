@@ -137,7 +137,7 @@ function loadDb() {
       {
         id: "pat-1",
         name: "Dinesh Kumar",
-        email: "dineshstar979@gmail.com",
+        email: "patient123@gmail.com",
         password: "Patient@123",
         role: "PATIENT",
         phone: "+91 98765 43210",

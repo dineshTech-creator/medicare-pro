@@ -220,7 +220,7 @@ function PatientLogin({ onSuccess }: { onSuccess: (u: UserSession) => void }) {
     <form onSubmit={submit} className="space-y-3">
       <button 
         type="button" 
-        onClick={() => { setEmail("dineshstar979@gmail.com"); setPass("Patient@123"); }}
+        onClick={() => { setEmail("patient123@gmail.com"); setPass("Patient@123"); }}
         className="w-full py-2 mb-1 rounded-xl text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors flex items-center justify-center gap-2"
       >
         <User className="w-4 h-4" /> Use Demo Patient Account
