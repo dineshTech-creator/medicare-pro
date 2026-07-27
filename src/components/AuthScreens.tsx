@@ -199,8 +199,8 @@ function RoleTabs({ active, onChange }: { active: Role; onChange: (r: Role) => v
 // ─── PATIENT FORMS ────────────────────────────────────────────────────────────
 
 function PatientLogin({ onSuccess }: { onSuccess: (u: UserSession) => void }) {
-  const [email, setEmail]       = useState("dineshstar979@gmail.com");
-  const [pass,  setPass]        = useState("Patient@123");
+  const [email, setEmail]       = useState("");
+  const [pass,  setPass]        = useState("");
   const [show,  setShow]        = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState("");
@@ -218,10 +218,13 @@ function PatientLogin({ onSuccess }: { onSuccess: (u: UserSession) => void }) {
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      <div className="p-3 mb-1 rounded-xl bg-blue-50 border border-blue-100 flex flex-col gap-1 text-xs text-blue-700">
-        <span className="font-semibold flex items-center gap-1.5"><Info className="w-3.5 h-3.5"/> Demo Patient Account</span>
-        <span className="text-[11px] text-blue-600/80">Email: dineshstar979@gmail.com | Password: Patient@123</span>
-      </div>
+      <button 
+        type="button" 
+        onClick={() => { setEmail("dineshstar979@gmail.com"); setPass("Patient@123"); }}
+        className="w-full py-2 mb-1 rounded-xl text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors flex items-center justify-center gap-2"
+      >
+        <User className="w-4 h-4" /> Use Demo Patient Account
+      </button>
       {error && <ErrorBanner msg={error} />}
       <Field id="p-email" label="Email address" type="email" value={email} onChange={setEmail}
         icon={<Mail className="w-4 h-4" />} required />
@@ -303,8 +306,8 @@ function PatientRegister({ onSuccess }: { onSuccess: (u: UserSession) => void })
 const DEPTS = ["Cardiology","Pediatrics","Neurology","Orthopedics","Dermatology","General Medicine"];
 
 function DoctorLogin({ onSuccess }: { onSuccess: (u: UserSession) => void }) {
-  const [email, setEmail]     = useState("sarah.j@medicare.com");
-  const [pass,  setPass]      = useState("Doctor@123");
+  const [email, setEmail]     = useState("");
+  const [pass,  setPass]      = useState("");
   const [show,  setShow]      = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -322,10 +325,13 @@ function DoctorLogin({ onSuccess }: { onSuccess: (u: UserSession) => void }) {
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      <div className="p-3 mb-1 rounded-xl bg-teal-50 border border-teal-100 flex flex-col gap-1 text-xs text-teal-700">
-        <span className="font-semibold flex items-center gap-1.5"><Info className="w-3.5 h-3.5"/> Demo Doctor Account</span>
-        <span className="text-[11px] text-teal-600/80">Email: sarah.j@medicare.com | Password: Doctor@123</span>
-      </div>
+      <button 
+        type="button" 
+        onClick={() => { setEmail("sarah.j@medicare.com"); setPass("Doctor@123"); }}
+        className="w-full py-2 mb-1 rounded-xl text-sm font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors flex items-center justify-center gap-2"
+      >
+        <Stethoscope className="w-4 h-4" /> Use Demo Doctor Account
+      </button>
       {error && <ErrorBanner msg={error} />}
       <Field id="d-email" label="Doctor email" type="email" value={email} onChange={setEmail}
         icon={<Mail className="w-4 h-4" />} required />
@@ -469,8 +475,8 @@ function DoctorRegister({ onDone }: { onDone: () => void }) {
 // ─── ADMIN FORM (login only — no public registration) ────────────────────────
 
 function AdminLogin({ onSuccess }: { onSuccess: (u: UserSession) => void }) {
-  const [email, setEmail]     = useState("admin@medicare.com");
-  const [pass,  setPass]      = useState("Admin@123");
+  const [email, setEmail]     = useState("");
+  const [pass,  setPass]      = useState("");
   const [show,  setShow]      = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
@@ -488,10 +494,13 @@ function AdminLogin({ onSuccess }: { onSuccess: (u: UserSession) => void }) {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <div className="p-3 rounded-xl bg-violet-50 border border-violet-100 flex flex-col gap-1 text-xs text-violet-700">
-        <span className="font-semibold flex items-center gap-1.5"><Info className="w-3.5 h-3.5"/> Demo Admin Account</span>
-        <span className="text-[11px] text-violet-600/80">Email: admin@medicare.com | Password: Admin@123</span>
-      </div>
+      <button 
+        type="button" 
+        onClick={() => { setEmail("admin@medicare.com"); setPass("Admin@123"); }}
+        className="w-full py-2 mb-1 rounded-xl text-sm font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 transition-colors flex items-center justify-center gap-2"
+      >
+        <Building2 className="w-4 h-4" /> Use Demo Admin Account
+      </button>
       {error && <ErrorBanner msg={error} />}
 
       <div className="p-4 rounded-xl bg-violet-50 border border-violet-100 space-y-1.5">
