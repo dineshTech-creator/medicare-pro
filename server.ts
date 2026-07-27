@@ -41,11 +41,48 @@ function loadDb() {
     try {
       const db = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
       
-      // Force update the demo patient credentials in case they are stuck in a persistent disk
-      const demoPat = db.patients?.find((p: any) => p.id === "pat-1");
-      if (demoPat && (demoPat.email !== "patient123@gmail.com" || demoPat.password !== "patient123")) {
-        demoPat.email = "patient123@gmail.com";
-        demoPat.password = "patient123";
+      let modified = false;
+
+      // 1. Force Patient Demo
+      let pat = db.patients?.find((p: any) => p.id === "pat-1" || p.email === "patient123@gmail.com" || p.email === "dineshstar979@gmail.com");
+      if (!pat) {
+        pat = { id: "pat-1", name: "Demo Patient", role: "PATIENT", phone: "1234567890", dob: "2000-01-01", bloodGroup: "O+" };
+        if (!db.patients) db.patients = [];
+        db.patients.push(pat);
+      }
+      if (pat.email !== "patient123@gmail.com" || pat.password !== "patient123") {
+        pat.email = "patient123@gmail.com";
+        pat.password = "patient123";
+        modified = true;
+      }
+
+      // 2. Force Doctor Demo
+      let doc = db.doctors?.find((d: any) => d.id === "doc-1" || d.email === "sarah.j@medicare.com");
+      if (!doc) {
+        doc = { id: "doc-1", name: "Dr. Sarah Jenkins", role: "DOCTOR", department: "Cardiology", status: "APPROVED" };
+        if (!db.doctors) db.doctors = [];
+        db.doctors.push(doc);
+      }
+      if (doc.email !== "sarah.j@medicare.com" || doc.password !== "Doctor@123") {
+        doc.email = "sarah.j@medicare.com";
+        doc.password = "Doctor@123";
+        modified = true;
+      }
+
+      // 3. Force Admin Demo
+      let adm = db.admins?.find((a: any) => a.id === "adm-1" || a.email === "admin@medicare.com");
+      if (!adm) {
+        adm = { id: "adm-1", name: "System Administrator", role: "ADMIN" };
+        if (!db.admins) db.admins = [];
+        db.admins.push(adm);
+      }
+      if (adm.email !== "admin@medicare.com" || adm.password !== "Admin@123") {
+        adm.email = "admin@medicare.com";
+        adm.password = "Admin@123";
+        modified = true;
+      }
+
+      if (modified) {
         fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
       }
 
